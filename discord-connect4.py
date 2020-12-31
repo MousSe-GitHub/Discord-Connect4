@@ -1,10 +1,10 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 import asyncio
 import random
 
 
-TOKEN = #token goes here
+TOKEN = 'Your token here'
 
 client = commands.Bot(command_prefix='§')
 client.remove_command('help')
@@ -29,23 +29,23 @@ def format_grid(grid):
 	res = []
 
 	for i in numbers:
-		res.append(str('⬛' + i))
+		res.append(i)
 
-	res.append('⬛\n')
+	res.append('\n')
 
 	for Yaxe in range(len(grid)):
-		res.append('⬜')
+
 		for Xaxe in range(len(grid[Yaxe])):
 
 			if grid[Yaxe][Xaxe]==0:
-				res.append('⬛⬜')
+				res.append('⬛')
 			if grid[Yaxe][Xaxe]==1:
-				res.append('🔴⬜')
+				res.append('🔴')
 			if grid[Yaxe][Xaxe]==2:
-				res.append('🟡⬜')
+				res.append('🟡')
 
 
-		res.append('\n⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜\n')
+		res.append('\n')
 
 
 
@@ -120,8 +120,34 @@ def check_win(game_list):
 
 @client.event
 async def on_ready():
+	background_task.start()
 	await client.change_presence(activity=discord.Game(name='§help'))
 	print('Ready to connect 4')
+
+
+# Background tasks
+@tasks.loop(seconds=10.0)
+async def background_task():
+	global game_list
+
+	to_pop = []
+
+	for current_game in game_list:
+		game_list[current_game]['timeout'] -= 10
+
+		if game_list[current_game]['timeout'] <= 0:
+
+			embed = discord.Embed(title='Connect 4', description=str('Game ended by time out\n\n' + format_grid(game_list[current_game]['grid'])), color=game_list[current_game]['color'])
+			embed.set_footer(text = 'Game ended')
+			channel = client.get_channel(game_list[current_game]['channel_id'])
+			msg = await channel.fetch_message(current_game)
+			await msg.edit(embed=embed)
+
+			to_pop.append(current_game)
+
+	for i in to_pop:
+		game_list.pop(i)
+
 
 
 
@@ -146,9 +172,12 @@ async def on_raw_reaction_add(payload):
 
 
 	if str(payload.emoji)=='❌' and payload.user_id == game_list[current_game][game_list[current_game]['turn']]:
-		embed = discord.Embed(title='Connect 4', description='Game ended', color=game_list[current_game]['color'])
+		embed = discord.Embed(title='Connect 4', description=str('Game ended by <@'+str(game_list[current_game][game_list[current_game]['turn']])+'>\n\n' + format_grid(game_list[current_game]['grid'])), color=game_list[current_game]['color'])
+		embed.set_footer(text = 'Game ended')
+		channel = client.get_channel(payload.channel_id)
+		msg = await channel.fetch_message(current_game)
+		await msg.edit(embed=embed)
 		game_list.pop(payload.message_id)
-		await client.get_channel(payload.channel_id).send(embed=embed)
 
 	else:
 		#Put circle
@@ -166,40 +195,32 @@ async def on_raw_reaction_add(payload):
 
 		#Make message
 		embed = discord.Embed(title='Connect 4', description=str('Its <@'+str(game_list[current_game][game_list[current_game]['turn']])+'> turn :\n\n' + format_grid(game_list[current_game]['grid'])), color=game_list[current_game]['color'])
-		msg = await client.get_channel(payload.channel_id).send(embed=embed)
+		channel = client.get_channel(payload.channel_id)
+		msg = await channel.fetch_message(current_game)
+		await msg.edit(embed=embed)
+
+		game_list[current_game]['timeout'] = 60
+
+		member = await client.fetch_user(payload.user_id)
+		await msg.remove_reaction(payload.emoji, member)
 
 
 		#Check win
 		if game_list[current_game]['winner']!=0:
-			embed = discord.Embed(title='Connect 4', description=str('Game ended\n\n<@' + str(game_list[current_game][game_list[current_game]['winner']]) + '> won !'), color=game_list[current_game]['color'])
+
+			if game_list[current_game]['turn']==1:
+				game_list[current_game]['turn']=2
+			else:
+					game_list[current_game]['turn']=1
+
+			embed = discord.Embed(title='Connect 4', description=str('🎉 <@'+str(game_list[current_game][game_list[current_game]['turn']])+'> won 🎉\n\n' + format_grid(game_list[current_game]['grid'])), color=game_list[current_game]['color'])
+			embed.set_footer(text = 'Game ended')
+			msg = await channel.fetch_message(current_game)
+			await msg.edit(embed=embed)
 			game_list.pop(payload.message_id)
-			await client.get_channel(payload.channel_id).send(embed=embed)
 			return
 
-		#Set reactions
-		for i in range(len(numbers)):
-			if game_list[current_game]['grid'][0][i] == 0:
-				await msg.add_reaction(numbers[i])
-		await msg.add_reaction('❌')
 
-
-		game_list[msg.id] = game_list.pop(current_game)
-
-		await asyncio.sleep(2)
-		channel = client.get_channel(payload.channel_id)
-		msg = await channel.fetch_message(current_game)
-		await msg.delete()
-
-
-		await asyncio.sleep(60)
-
-		try:
-			embed = discord.Embed(title='Connect 4', description='Game ended', color=game_list[msg.id]['color'])
-			game_list.pop(msg.id)
-			await client.get_channel(payload.channel_id).send(embed=embed)
-
-		except:
-			pass
 
 
 
@@ -240,16 +261,8 @@ async def play(ctx, user_1 : discord.Member, user_2 : discord.Member):
 		await msg.add_reaction(i)
 	await msg.add_reaction('❌')
 
-	game_list[msg.id] = {'grid':default_grid, 1:user_1.id, 2:user_2.id, 'color':color, 'turn':1, 'winner':0}
+	game_list[msg.id] = {'grid':default_grid, 1:user_1.id, 2:user_2.id, 'color':color, 'turn':1, 'winner':0, 'timeout':60, 'channel_id':ctx.channel.id}
 
-	await asyncio.sleep(60)
-
-	try:
-		embed = discord.Embed(title='Connect 4', description='Game ended', color=game_list[msg.id]['color'])
-		game_list.pop(msg.id)
-		await ctx.send(embed=embed)
-	except:
-		pass
 
 
 @client.command()
@@ -261,9 +274,27 @@ async def invite(ctx):
 
 @client.command()
 async def about(ctx):
-	embed = discord.Embed(title='Connect 4 | about', description='An easy way to play Connect 4 without even leaving discord !\n\nJust do **§play @player1 @player2** to start a game and use the reactions to play.\n⚠️ Dont forget however that the game stops if no one has played after 60 ⚠️\n\nAlso the bot was made bot by <@395950370846801922> (and is probably broken sometimes)', color=0x03fce3)
-	embed.set_footer(text = str('Currently in ' + str(len(client.guilds)) + ' servers'))
+	embed = discord.Embed(title='Connect 4 | about', description='An easy way to play Connect 4 without even leaving discord !\n\nJust do **§play @player1 @player2** to start a game and use the reactions to play.\n⚠️ The game ends if no one plays after 60 seconds ⚠️', color=0x03fce3)
+	member = str(await client.fetch_user(395950370846801922))
+	embed.set_footer(text = str('Made by ' + str(member)))
+	embed.set_thumbnail(url=client.user.avatar_url)
+	#embed.set_footer(text = str('Currently in ' + str(len(client.guilds)) + ' servers'))
 	await ctx.send(embed=embed)
+
+
+@client.command()
+async def debug_info(ctx):
+	global game_list
+
+	if ctx.author.id == 395950370846801922:
+
+		member = str(await client.fetch_user(395950370846801922))
+		server_count =  str(len(client.guilds))
+		game_count = str(len(game_list))
+
+		embed = discord.Embed(title = 'Connect 4 info', description=str('Server count :' + server_count + '\nGame running :' + game_count), color=0x03fce3)
+		embed.set_thumbnail(url=client.user.avatar_url)
+		await ctx.send(embed=embed)
 
 
 client.run(TOKEN)
