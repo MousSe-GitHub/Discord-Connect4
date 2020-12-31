@@ -282,19 +282,5 @@ async def about(ctx):
 	await ctx.send(embed=embed)
 
 
-@client.command()
-async def debug_info(ctx):
-	global game_list
-
-	if ctx.author.id == 395950370846801922:
-
-		member = str(await client.fetch_user(395950370846801922))
-		server_count =  str(len(client.guilds))
-		game_count = str(len(game_list))
-
-		embed = discord.Embed(title = 'Connect 4 info', description=str('Server count :' + server_count + '\nGame running :' + game_count), color=0x03fce3)
-		embed.set_thumbnail(url=client.user.avatar_url)
-		await ctx.send(embed=embed)
-
 
 client.run(TOKEN)
