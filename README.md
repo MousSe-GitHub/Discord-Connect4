@@ -7,3 +7,5 @@ You can also do §play @player1 @player2 hard to activate hard mode.
 
 You can invite my bot using this link :
 https://discord.com/api/oauth2/authorize?client_id=747832023271604236&permissions=76864&scope=bot
+
+or use this script to run your own (for some reason)
